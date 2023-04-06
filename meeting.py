@@ -77,10 +77,24 @@ class Meeting:
         Language.FR: ('Titre1FR', 'Titre2FR'),
     }
 
+    # This function initializes a new Meeting instance
+    # It takes in four arguments:
+    #   - session: The related session of the parliament
+    #   - id: The number of the meeting (e.g. 1)
+    #   - time_of_day: The time of day this meeting occurred at
+    #   - date: The date on which the meeting took place
+    # It sets the following attributes:
+    #   - parliamentary_session: The related session of the parliament
+    #   - session: The session number
+    #   - id: The meeting number
+    #   - time_of_day: The time of day this meeting occurred at
+    #   - date: The date on which the meeting took place
+    #   - topics: A dictionary of topics discussed in the meeting
+    #   - _cached_soup: A cached BeautifulSoup object for parsing meeting data
+    
     def __init__(self, session, id: int, time_of_day: TimeOfDay, date: datetime.datetime):
         """
         Initiate a new Meeting instance
-
         Args:
             session (parliament_parser.ParliamentarySession): The related session of the parliament
             id (int): The number of the meeting (e.g. 1)
@@ -95,24 +109,42 @@ class Meeting:
         self.topics = {}
         self._cached_soup = None
 
+    # This function returns the URI of a meeting in JSON format
+    # Input: None
+    # Output: String
+    
     def get_uri(self):
         return f'meetings/{self.id}.json'
 
+    # Function: dump_json
+    # Description: Dumps a JSON representation of a meeting object to a file and returns the URI of the file
+    # Input:
+    #   - self: The meeting object to be dumped
+    #   - base_path: The base path where the JSON file will be saved
+    #   - base_URI: The base URI of the file
+    # Output:
+    #   - A string representing the URI of the dumped JSON file
+    
     def dump_json(self, base_path: str, base_URI="/"):
+        # Create paths and URIs
         base_meeting_path = path.join(base_path, "meetings")
         base_meeting_URI = f'{base_URI}meetings/'
         resource_name = f'{self.id}.json'
-
+        
+        # Create meeting directory if it doesn't exist
         makedirs(base_meeting_path, exist_ok=True)
-
+        
+        # Get meeting topics if they haven't been fetched yet
         if not self.topics:
             self.get_meeting_topics()
-
+        
+        # Group topics by type
         topics = defaultdict(dict)
         for key in self.topics:
             topic = self.topics[key]
             topics[str(topic.topic_type)][topic.item] = topic
-
+        
+        # Dump JSON representation of meeting to file
         with open(path.join(base_meeting_path, resource_name), 'w+') as fp:
             json.dump({
                 'id': self.id,
@@ -126,10 +158,12 @@ class Meeting:
                     for topic_type, topic_type_dict in topics.items()
                 },
             }, fp, ensure_ascii=False)
-
+        
+        # Create meeting directory for unfolded JSON if it doesn't exist
         meeting_dir_path = path.join(base_meeting_path, str(self.id))
         makedirs(meeting_dir_path, exist_ok=True)
-
+        
+        # Dump unfolded JSON representation of meeting to file
         with open(path.join(meeting_dir_path, 'unfolded.json'), 'w+') as fp:
             json.dump({
                 topic_type: {
@@ -138,76 +172,110 @@ class Meeting:
                 }
                 for topic_type, topic_type_dict in topics.items()
             }, fp, ensure_ascii=False)
-
+        
+        # Return URI of dumped JSON file
         return f'{base_meeting_URI}{resource_name}'
 
+    # This function returns a string representation of a Meeting object
+    # It includes the session, id, time of day, and date of the meeting
+    # The date is represented using the repr() function to ensure proper formatting
+    
     def __repr__(self):
         return 'Meeting(%s, %s, %s, %s)' % (self.session, self.id, self.time_of_day, repr(self.date))
 
+    # This function obtains the URL of the meeting notes.
+    # It takes no arguments.
+    # It returns a string containing the URL of the related meeting notes.
     def get_notes_url(self):
         """Obtain the URL of the meeting notes.
-
         Returns:
             str: URL of the related meeting notes.
         """
         return 'https://www.dekamer.be/doc/PCRI/html/%d/ip%03dx.html' % (self.session, self.id)
 
+    # This function returns a BeautifulSoup object that contains the parsed HTML content of a webpage.
+    # If the object has not been cached yet, it sends a GET request to the webpage and caches the result.
+    # Parameters:
+    #   - self: instance of a class that has a requests_session and get_notes_url() method
+    # Returns:
+    #   - A BeautifulSoup object
+    
     def __get_soup(self):
+        # Check if the object has already been cached
         if not self._cached_soup:
+            # Send a GET request to the webpage using the requests_session object
             page = self.parliamentary_session.requests_session.get(self.get_notes_url())
+            # Parse the HTML content of the response using the 'lxml' parser and 'windows-1252' encoding
             self._cached_soup = BeautifulSoup(page.content, 'lxml', from_encoding='windows-1252')
+        # Return the cached BeautifulSoup object
         return self._cached_soup
 
+    # This function extracts information on the votes to MeetingTopics
+    # It takes no arguments and returns nothing
     def __get_votes(self):
         '''
         This internal method adds information on the votes to MeetingTopics
         '''
+        # Get the soup object
         soup = self.__get_soup()
-
+        # Print the current URL being checked
         print('currently checking:', self.get_notes_url())
-
+        
+        # Helper function to extract the title by vote
         def extract_title_by_vote(table: NavigableString, language: Language):
+            '''
+            Extracts the title by vote from the given table and language
+            '''
             class_name = Meeting.language_mapping[language][1]
-
             next_line = table.find_previous_sibling("p", {"class": class_name})
             while not re.match(r"[0-9]+ .*", clean_string(next_line.text)):
                 next_line = next_line.find_previous_sibling(
                     "p", {"class": class_name})
                 if not next_line:
                     return None
-
             match = re.match(r"([0-9]+) (.*)", clean_string(next_line.text))
             return int(match.group(1))
-
+        
+        # Helper function to extract the vote number from a tag
         def extract_vote_number_from_tag(tag, default):
+            '''
+            Extracts the vote number from the given tag or returns the default value
+            '''
             header = clean_string(tag.find_parent('p').get_text())
             numeric_values = [int(s) for s in header.split() if s.isdigit()]
             return numeric_values[0] if numeric_values else default
-
+        
+        # Helper function to extract the name list from under a table
         def extract_name_list_from_under_table(current_node):
+            '''
+            Extracts the name list from under the given table
+            '''
             name_list = clean_string(current_node.get_text())
             while not (current_node.name == "table" or 'naamstemming' in current_node.get_text().lower()):
                 if current_node.get_text():
                     name_list += ',' + clean_string(current_node.get_text())
                 current_node = current_node.find_next_sibling()
-
             name_list = clean_list(name_list.split(','))
             return name_list, current_node
-
+        
+        # Helper function to check if a vote is cancelled
         def is_vote_cancelled(current_node):
+            '''
+            Checks if the given vote is cancelled
+            '''
             cancelled = False
-
             while current_node and not current_node.name == "table":
-                # Sometimes votes get cancelled, apparently
-                # this check seems to be consistent
                 if 'annulé' in current_node.get_text().lower() or '42.5' in current_node.get_text().lower():
                     cancelled = True
                     break
                 current_node = current_node.find_next_sibling()
-
             return cancelled, current_node
-
+        
+        # Helper function to get the name and electronic votes
         def get_name_and_electronic_votes():
+            '''
+            Gets the name and electronic votes
+            '''
             name_votes = {}
             electronic_votes = {}
             s3 = soup.find('div', {'class': 'Section3'})
@@ -222,54 +290,43 @@ class Meeting:
                     cancelled, current_node = is_vote_cancelled(vote_header)
                     if cancelled:
                         continue
-
                     yes, current_node = extract_name_list_from_under_table(
                         current_node.find_next_sibling())
                     no, current_node = extract_name_list_from_under_table(
                         current_node.find_next_sibling())
-
                     abstention = []
-
-                    # Handles the case where the abstention box is missing (no abstentions)
                     if 'onthoudingen' in current_node.get_text().lower() or 'abstentions' in current_node.get_text().lower():
                         next_vote = go_to_p(tags[i+1]).find_previous_sibling() if i + 1 < len(
                             tags) else vote_header.parent.find_all('p')[-1]
                         current_node = next_vote
                         abstention = clean_string(current_node.get_text())
                         current_node = current_node.find_previous_sibling()
-
-                        # TODO: merge with function
                         while not (current_node.name == "table" or 'naamstemming' in current_node.get_text().lower()):
                             if current_node.get_text():
                                 abstention = clean_string(
                                     current_node.get_text()) + ',' + abstention
                             current_node = current_node.find_previous_sibling()
                         abstention = clean_list(abstention.split(','))
-
                     name_votes[vote_number] = (yes, no, abstention)
-
                 tags = s3.find_all(text=re.compile(
                     r'Comptage\s*électronique\s*–\s*Elektronische telling:'))
                 for i, tag in enumerate(tags):
                     vote_number = extract_vote_number_from_tag(tag, i)
                     vote_header = go_to_p(tag)
                     cancelled, current_node = is_vote_cancelled(vote_header)
-
                     if cancelled:
                         continue
-
                     electronic_votes[vote_number] = current_node
-
             return name_votes, electronic_votes
-
+        
+        # Get the name and electronic votes
         name_votes, electronic_votes = get_name_and_electronic_votes()
-
+        
+        # Loop through all the tags with the given text
         for tag in soup.find_all(text=re.compile(r'(Stemming/vote|Vote/stemming)\s+([0-9]+)')):
             vote_number = int(
                 re.match(r'\(?(Stemming/vote|Vote/stemming)\s+([0-9]+)\)?', tag).group(2))
             is_electronic_vote = vote_number in electronic_votes
-
-            # Structure for electronic votes is a little different. This case is not inside a table.
             if is_electronic_vote:
                 while tag.name != 'p':
                     tag = tag.parent
@@ -277,27 +334,16 @@ class Meeting:
                 for _ in range(0, 6):
                     if tag:
                         tag = tag.parent
-
-                # Fixes an issue where votes are incorrectly parsed because of the fact a quorum was not reached
-                # (in that case no table is present but the table encapsulating the report can be)
                 if not tag or tag.name != 'table':
                     continue
-
             agenda_item = extract_title_by_vote(tag, Language.FR)
             agenda_item1 = extract_title_by_vote(tag, Language.NL)
             assert agenda_item1 == agenda_item
-            # There's yet another mistake: https://www.dekamer.be/doc/PCRI/html/55/ip111x.html is missing topic numbers
             if not agenda_item:
-                # FIXME: support this case somehow...
                 continue
-
             if not is_electronic_vote and len(tag.find_all('tr', attrs={'height': None})) <= 6:
-                # Some pages have a height="0" override tag to fix browser display issues.
-                # We have to ignore these otherwise we would start interpreting the votes as the wrong type.
                 rows = tag.find_all('tr', attrs={'height': None})
                 vote = None
-
-                # We can't always rely on the number of rows, since sometimes there's randomly an empty row.
                 last_row_text = rows[-1].get_text().strip()
                 if len(rows) == 5 or (len(rows) == 6 and (not last_row_text or last_row_text[0] == '<')):
                     vote = GenericVote.from_table(
@@ -315,49 +361,62 @@ class Meeting:
                         [self.parliamentary_session.find_member(name) for name in names[1]])
                     vote.set_abstention_voters(
                         [self.parliamentary_session.find_member(name) for name in names[2]])
-
                 self.topics[agenda_item].add_vote(vote)
             elif is_electronic_vote:
                 vote = electronic_vote_from_table(
                     self.topics[agenda_item], vote_number, electronic_votes[vote_number])
                 self.topics[agenda_item].add_vote(vote)
 
+    # This function obtains the topics discussed in a meeting
+    # and returns them as a dictionary of MeetingTopic objects.
+    
+    # Parameters:
+    # - refresh (bool, optional): Force a refresh of the meeting notes. Defaults to False.
+    
+    # Returns:
+    # - dict(MeetingTopic): The topics discussed in this meeting
+    
     def get_meeting_topics(self, refresh=False):
-        """Obtain the topics for this meeting.
-
-            refresh (bool, optional): Force a refresh of the meeting notes. Defaults to False.
-
-        Returns:
-            dict(MeetingTopic): The topics discussed in this meeting
         """
+        Obtain the topics for this meeting.
+    
+        Parameters:
+        - refresh (bool, optional): Force a refresh of the meeting notes. Defaults to False.
+    
+        Returns:
+        - dict(MeetingTopic): The topics discussed in this meeting
+        """
+        
         if refresh or not self.topics:
             # Obtain the meeting notes
             soup = self.__get_soup()
             self.topics = {}
-
+            
+            # This function parses the topics in a given language
             def parse_topics(language):
                 classes = Meeting.language_mapping[language]
                 titles = soup.find_all('p', {'class': classes[1]})
                 current_title = ""
                 last_item_id = 1 # Our own counter to recover missing item IDs
-
+                
                 while titles:
                     item = titles.pop()
-
+                    
                     # Empty title or "bogus comment" title must be ignored
                     # as they're not part of real titles
                     cleaned_item_text = clean_string(item.text)
                     if not cleaned_item_text or cleaned_item_text[0] == '<':
                         continue
                     
+                    # Merge multiple elements if they belong to the same language ( = class)
                     while not re.match("([0-9]+) (.*)", clean_string(item.text)):
                         current_title = clean_string(
                             item.text) + '\n' + current_title
-                        # Only merge multiple elements if it belongs to the same language ( = class)
                         item_previous_sibling = item.find_previous_siblings()[0]
                         if 'class' not in item_previous_sibling.attrs or classes[1] not in item_previous_sibling.attrs['class']:
                             break
                         item = titles.pop()
+                    
                     # Deal with the possible mistake that the number of the question is missing.
                     # Example on: https://www.dekamer.be/doc/PCRI/html/55/ip199x.html
                     m = re.match("([0-9]+) (.*)", clean_string(item.text))
@@ -379,21 +438,25 @@ class Meeting:
                     self.topics[item_id].set_section(language, clean_string(section.text) if section else (
                         "Algemeen" if language == Language.NL else "Generale"))
                     self.topics[item_id].complete_type()
+                    
                     if language == Language.NL:
                         title = normalize_str(current_title.rstrip().lower()).decode()
                         for member in self.parliamentary_session.get_members():
                             if member.normalized_name() in title:
                                 member.post_activity(TopicActivity(
                                     member, self, self.topics[item_id]))
+                    
                     # Reset state, as this is used for appends
                     current_title = ""
-
+            
             # Parse Dutch Meeting Topics
             parse_topics(Language.NL)
-
+            
             # Parse French Meeting Topics
             parse_topics(Language.FR)
+            
             self.__get_votes()
+        
         return self.topics
 
     @staticmethod
@@ -420,11 +483,34 @@ class Meeting:
         return result
 
 
+# This function creates a new ParliamentaryDocument object or returns an existing one from the given session based on the document number.
+
+# Parameters:
+# - session: the session object to search for the document in
+# - number: the document number to create or retrieve
+
+# Returns:
+# - A ParliamentaryDocument object with the given number, either newly created or retrieved from the session's documents dictionary.
+
 def create_or_get_doc(session, number):
     return ParliamentaryDocument(session, number) if number not in session.documents else session.documents[number]
 
 
+# This function creates a new ParliamentaryQuestion object if the question number is not already in the session's questions dictionary.
+# If the question number already exists in the session's questions dictionary, it returns the existing ParliamentaryQuestion object.
+
 def create_or_get_question(session, number):
+    """
+    Creates a new ParliamentaryQuestion object if the question number is not already in the session's questions dictionary.
+    If the question number already exists in the session's questions dictionary, it returns the existing ParliamentaryQuestion object.
+    
+    Args:
+    session (Session): The session object to create or get the question from.
+    number (int): The number of the question to create or get.
+    
+    Returns:
+    ParliamentaryQuestion: The newly created or existing ParliamentaryQuestion object.
+    """
     return ParliamentaryQuestion(session, number) if number not in session.questions else session.questions[number]
 
 
@@ -436,7 +522,6 @@ class MeetingTopic:
 
     def __init__(self, session, meeting: Meeting, item: int):
         """Constructs a new instance of a MeetingTopic
-
         Args:
             session (ParliamentarySession): Session of the parliament
             id (int): Number of the meeting this topic is part of (e.g. 89)
@@ -453,44 +538,84 @@ class MeetingTopic:
         self.related_questions = []
         self.title_NL = None
         self.title_FR = None
+    
 
+    # This function returns the URI for a meeting item in JSON format
+    # It takes no input parameters
+    # It uses the id and item attributes of the object to construct the URI
+    # Returns the URI as a string
+    
     def get_uri(self):
         return f'meetings/{self.id}/{self.item}.json'
 
+    # Function: json_representation
+    # Description: Returns a JSON representation of the object
+    # Input:
+    #   - session_base_URI: A string representing the base URI for the session
+    # Output:
+    #   - A dictionary representing the JSON representation of the object
     def json_representation(self, session_base_URI: str):
-        return {'id': self.item, 'title': {'NL': self.title_NL, 'FR': self.title_FR}, 'votes': [
-                      vote.to_dict(session_base_URI) for vote in self.votes], 'questions': [f'{session_base_URI}{question.uri()}' for question in self.related_questions], 'legislation': [f'{session_base_URI}{document.uri()}' for document in self.related_documents]}
+        return {'id': self.item, 
+                'title': {'NL': self.title_NL, 'FR': self.title_FR}, 
+                'votes': [vote.to_dict(session_base_URI) for vote in self.votes], 
+                'questions': [f'{session_base_URI}{question.uri()}' for question in self.related_questions], 
+                'legislation': [f'{session_base_URI}{document.uri()}' for document in self.related_documents]}
 
+    # This function dumps the JSON representation of the current meeting object to a file
+    # located at the specified base path and returns the URI of the meeting object.
+    
     def dump_json(self, base_path: str, session_base_URI: str):
+        # Create the path to the meeting file
         topic_path = path.join(base_path, 'meetings', str(self.id))
+        # Create the directory if it doesn't exist
         makedirs(topic_path, exist_ok=True)
-
+        # Open the file for writing
         with open(path.join(topic_path, f'{self.item}.json'), 'w+') as fp:
+            # Dump the JSON representation of the meeting object to the file
             json.dump(self.json_representation(session_base_URI), fp, ensure_ascii=False)
-
+        # Return the URI of the meeting object
         return f'{session_base_URI}{self.get_uri()}'
 
+    # This function returns a string representation of the MeetingTopic object.
+    # It takes no parameters and uses the session, id, and item attributes to create the string.
     def __repr__(self):
         return "MeetingTopic(%s, %s, %s)" % (self.session, self.id, self.item)
 
+    # This function sets the title of an agenda item for a specific language
+    # language: The language of the title being set (e.g. Language.NL)
+    # title: The actual title being set
     def set_title(self, language: Language, title: str):
         """Set the title of this agenda item for a specific language
-
         Args:
             language (Language): The language of this title (e.g. Language.NL)
             title (str): The actual title
         """
         if language == Language.NL:
-            self.title_NL = title
+            self.title_NL = title # Set the title for Dutch language
         else:
-            self.title_FR = title
+            self.title_FR = title # Set the title for French language
 
+    # This function completes the type of the topic based on its title and section
+    # If a type is provided, it sets the topic_type to that type
+    # If no type is provided, it determines the topic_type based on the title and section
     def complete_type(self, type: TopicType = None):
+        """
+        This function completes the type of the topic based on its title and section.
+        If a type is provided, it sets the topic_type to that type.
+        If no type is provided, it determines the topic_type based on the title and section.
+    
+        Args:
+            type (TopicType, optional): The type of the topic. Defaults to None.
+    
+        Returns:
+            None
+        """
         if type:
             self.topic_type = type
         else:
             self.topic_type = TopicType.from_section_and_title(
                 self.title_NL, self.section_NL)
+        
         # No multithreading here, since that causes more load to the site
         # which means we get blocked, and it also increases the lock contention.
         if self.topic_type == TopicType.BILL_PROPOSAL or self.topic_type == TopicType.DRAFT_BILL or self.topic_type == TopicType.LEGISLATION or self.topic_type == TopicType.NAME_VOTE or self.topic_type == TopicType.SECRET_VOTE:
@@ -516,22 +641,31 @@ class MeetingTopic:
             self.related_questions = list(map(functools.partial(
                 create_or_get_question, self.parliamentary_session), questions_numbers))
 
+    # Documented code:
+    
     def set_section(self, language: Language, section_name: str):
-        """The meeting is also organized in sections, this method allows you to set
-        the section name.
-
+        """
+        Sets the section name for the meeting.
+    
         Args:
-            language (Language): The language of this section name (e.g. Language.NL)
-            section_name (str): The actual section name
+            language (Language): The language of the section name.
+            section_name (str): The name of the section.
+    
+        Returns:
+            None
         """
         if language == Language.NL:
             self.section_NL = section_name
         else:
             self.section_FR = section_name
 
+    # This function returns the title of the agenda item in both Dutch and French
+    # and returns them as a tuple of strings
+    
     def get_title(self):
-        """Returns the title of the agenda item
-
+        """
+        Returns the title of the agenda item
+    
         Returns:
             (str, str): A pair of strings where the first element is
                         the Dutch version of the title, the second is
@@ -539,27 +673,35 @@ class MeetingTopic:
         """
         return (self.title_NL, self.title_FR)
 
+    # This function returns the section name of the agenda item
+    # It returns a pair of strings where the first element is the Dutch version of the title, and the second is the French version.
     def get_section(self):
-        """Returns the section name of the agenda item
-
+        """
+        Returns the section name of the agenda item
+    
         Returns:
-            (str, str): A pair of strings where the first element is
-                        the Dutch version of the title, the second is
-                        the French version.
+        (str, str): A pair of strings where the first element is the Dutch version of the title, the second is the French version.
         """
         return (self.section_NL, self.section_FR)
 
+    """
+    Adds a single vote to the agenda item.
+    
+    Args:
+        vote (Vote): The vote to be added.
+    
+    Returns:
+        None.
+    """
     def add_vote(self, vote):
-        """Add votes to the agenda item
-
-        Args:
-            vote (Vote): Add a single vote to the agenda item 
-        """
         self.votes.append(vote)
 
+    # This function gets the votes for the agenda item.
+    # It returns a list of all the votes related to the item.
     def get_votes(self):
-        """Get the votes for the agenda item.
-
+        """
+        Get the votes for the agenda item.
+    
         Returns:
             list(Vote): A list of all the votes related to the item.
         """

@@ -1,3 +1,5 @@
+# Documenting the code
+
 import requests
 from bs4 import BeautifulSoup
 from util import normalize_str
@@ -29,7 +31,8 @@ class Member:
         date_of_birth: datetime,
         photo_url: Optional[str],
     ):
-        """Class representing a single member of the parliament
+        """
+        Initializes a Member object with the given parameters.
 
         Args:
             first_name (str): First name of the member
@@ -63,12 +66,12 @@ class Member:
 
     @staticmethod
     def from_json(json_entry):
-        """Constructs a member from its static json representation.
-        
+        """
+        Constructs a Member object from its static json representation.
+
         Args:
             json_entry: The static json representation
         """
-
         import dateparser
         date_of_birth = dateparser.parse(json_entry['date_of_birth'])
         return Member(
@@ -85,9 +88,22 @@ class Member:
         )
 
     def uri(self):
+        """
+        Returns the URI of the Member object.
+
+        Returns:
+            str: The URI of the Member object.
+        """
         return f'members/{self.uuid}.json'
 
     def dump_json(self, base_path: str, base_URI="/"):
+        """
+        Dumps the Member object to a json file.
+
+        Args:
+            base_path (str): The base path to the json file.
+            base_URI (str, optional): The base URI. Defaults to "/".
+        """
         base_path = path.join(base_path, "members")
         base_URI_members = f'{base_URI}members/'
         resource_name = f'{self.uuid}.json'
@@ -116,19 +132,44 @@ class Member:
         return f'{base_URI_members}{resource_name}'
 
     def __repr__(self):
+        """
+        Returns a string representation of the Member object.
+
+        Returns:
+            str: String representation of the Member object.
+        """
         return "Member(\"%s\", \"%s\", \"%s\", \"%s\", \"%s\", \"%s\")" % (self.first_name, self.last_name, self.party, self.province, self.language, self.url)
 
     def __str__(self):
+        """
+        Returns a string representation of the Member object.
+
+        Returns:
+            str: String representation of the Member object.
+        """
         return "%s, %s" % (self.first_name, self.last_name)
 
     def normalized_name(self):
+        """
+        Returns the normalized name of the Member object.
+
+        Returns:
+            str: The normalized name of the Member object.
+        """
         return normalize_str(("%s %s" % (self.first_name, self.last_name)).lower()).decode()
 
     def post_activity(self, activity: Activity):
+        """
+        Adds an activity to the Member object.
+
+        Args:
+            activity (Activity): The activity to be added.
+        """
         self.activities.append(activity)
 
     def has_name(self, query: str):
-        """Compare the query string with the "{last_name} {first_name}" combination of
+        """
+        Compares the query string with the "{last_name} {first_name}" combination of
         this member, ignoring any diactritical characters. Alternative names are also possible for
         the member, this is sometimes necessary.
 
@@ -151,7 +192,8 @@ class Member:
         return query == name or query == normalize_str(f'{self.first_name} {self.last_name}')
 
     def set_replaces(self, replaces: List[any]):
-        """Set which members are replaces when by this member.
+        """
+        Sets which members are replaced when by this member.
 
         Args:
             replaces (list): All the timespans a member was replaced
