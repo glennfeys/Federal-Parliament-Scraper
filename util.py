@@ -1,10 +1,13 @@
+# The following code contains functions for string normalization and cleaning
+
 import unicodedata
 from bs4 import NavigableString
 from typing import List
 
 
 def normalize_str(text: str):
-    """Replace diacritical characters and normalize the string this way.
+    """
+    Replace diacritical characters and normalize the string this way.
 
     Args:
         text (str): String to be normalized
@@ -17,10 +20,11 @@ def normalize_str(text: str):
 
 
 def clean_string(text: str):
-    """Replace MS Office Special Characters from a String as well as double whitespace
+    """
+    Replace MS Office Special Characters from a String as well as double whitespace
 
     Args:
-        text (str):
+        text (str): String to be cleaned
 
     Returns:
         str: Cleaned string
@@ -62,21 +66,53 @@ banned_set = set([
 
 
 def is_string_banned(string: str):
+    """
+    Check if a string is in the banned set.
+
+    Args:
+        string (str): String to be checked
+
+    Returns:
+        bool: True if string is banned, False otherwise
+    """
     return string in banned_set
 
 
 def is_string_banned_or_empty(string: str):
+    """
+    Check if a string is in the banned set or empty.
+
+    Args:
+        string (str): String to be checked
+
+    Returns:
+        bool: True if string is banned or empty, False otherwise
+    """
     return not string or is_string_banned(string)
 
 
 def clean_list(list: List[any]):
-    """Removes falsy items from a list
+    """
+    Removes falsy items from a list.
+
+    Args:
+        list (List[any]): List to be cleaned
+
+    Returns:
+        List[str]: Cleaned list
     """
     return [clean_string(item) for item in list if not is_string_banned_or_empty(item)]
 
 
 def go_to_p(tag: NavigableString):
-    """Go to the nearest parent p tag of a NavigableString.
+    """
+    Go to the nearest parent p tag of a NavigableString.
+
+    Args:
+        tag (NavigableString): NavigableString object
+
+    Returns:
+        NavigableString: Parent p tag of the given NavigableString object
     """
     while tag.name != "p":
         tag = tag.parent
